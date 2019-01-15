@@ -1,8 +1,19 @@
 #include "io_github_libvips_Vips.h"
+#include <cstdio>
+#include <cstdlib>
 #include <vips/vips8>
 
 using vips::VError;
 using vips::VImage;
+
+/*
+ * Convenience function to determine the extension of a given filename.
+ */
+const char* getFilenameExtension(const char* filename) {
+	const char* dot = strrchr( filename, '.' );
+	if( !dot || dot == filename ) return "";
+	return dot + 1;
+}
 
 /*
  * Convenience function to help throw a RuntimeException.
@@ -210,22 +221,84 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_io_github_libvips_Vips_resizeForCov
 /*
  * Class:     io_github_libvips_Vips
  * Method:    convertImageToSRGBAndStrip()
- * Signature: (Ljava/lang/String;)V
+ * Signature: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
  */
-extern "C" JNIEXPORT void JNICALL Java_io_github_libvips_Vips_convertImageToSRGBAndStrip(JNIEnv *env, jclass cls, jstring jinputfilepath) {
+extern "C" JNIEXPORT void JNICALL Java_io_github_libvips_Vips_convertImageToSRGBAndStrip(JNIEnv *env, jclass cls, jstring jinputfilepath, jstring jcmykiccprofilepath, jstring jsrgbiccprofilepath) {
 	const char* inputfilepath =  env->GetStringUTFChars( jinputfilepath, 0 );
+	const char* cmykiccprofilepath =  env->GetStringUTFChars( jcmykiccprofilepath, 0 );
+	const char* srgbiccprofilepath =  env->GetStringUTFChars( jsrgbiccprofilepath, 0 );
 
-	try {
-		VImage in = VImage::new_from_file( inputfilepath, VImage::option()->set( "access", VIPS_ACCESS_SEQUENTIAL )->set( "n", -1 ) );
-		VImage out = in.colourspace( VIPS_INTERPRETATION_sRGB );
-		out.set( "xres", 3.779528 );
-		out.set( "yres", 3.779528 );
-		out.write_to_file( inputfilepath, VImage::option()->set( "strip", true ) );
-	} catch ( const VError& e ) {
-		throwRuntimeException( env, e.what() );
+	FILE* sourceFile = fopen( inputfilepath , "rb" );
+	char* buffer[1024];
+	if ( sourceFile  != NULL ) {
+		const char* extension = getFilenameExtension( inputfilepath );
+		size_t extensionLength = strlen( extension );
+		char* temporaryFileName = (char*) malloc( strlen( inputfilepath ) + extensionLength + 9 );
+		strcpy( temporaryFileName, inputfilepath );
+#ifdef _WIN32
+		strcat( temporaryFileName, ".XXXXXX" );
+		int tmpFile = mkstemp( temporaryFileName );
+#else
+		strcat( temporaryFileName, ".XXXXXX." );
+		strcat( temporaryFileName, extension );
+		int tmpFile = mkstemps( temporaryFileName, extensionLength + 1 );
+#endif
+		while (! feof( sourceFile ) ) {
+			size_t bytesRead = fread( buffer, sizeof( char ), sizeof( buffer ), sourceFile );
+			if ( bytesRead == 0 ) {
+				break;
+			}
+			write( tmpFile, buffer, bytesRead );
+		}
+
+		close( tmpFile );
+		fclose( sourceFile );
+
+#ifdef _WIN32
+		char* temporaryFileName2 = (char*) malloc( strlen( inputfilepath ) + extensionLength + 9 );
+		strcpy( temporaryFileName2, temporaryFileName );
+		strcat( temporaryFileName, "." );
+		strcat( temporaryFileName, extension );
+		rename( temporaryFileName2, temporaryFileName );
+		free( temporaryFileName2 );
+#endif
+		try {
+			VImage in = VImage::new_from_file( temporaryFileName, VImage::option()->set( "access", VIPS_ACCESS_SEQUENTIAL )->set( "n", -1 ) );
+			bool hasEmbeddedICCProfile = in.get_typeof( VIPS_META_ICC_NAME ) != 0;
+			bool applyRGBProfile = in.interpretation() != VIPS_INTERPRETATION_sRGB || !hasEmbeddedICCProfile;
+
+			VImage out;
+			if ( applyRGBProfile ) {
+				if ( hasEmbeddedICCProfile ) {
+					try {
+						out = in.icc_transform( (char*) srgbiccprofilepath, VImage::option()->set( "embedded", true )->set( "intent", VIPS_INTENT_PERCEPTUAL ) );
+					} catch (...) {
+						// Ignore failure of embedded profile
+					}
+					out = out.colourspace( VIPS_INTERPRETATION_sRGB );
+				} else if ( in.interpretation() == VIPS_INTERPRETATION_CMYK ) {
+					out = in.icc_transform( (char*) srgbiccprofilepath, VImage::option()->set( "input_profile", cmykiccprofilepath )->set( "intent", VIPS_INTENT_PERCEPTUAL ) ).colourspace( VIPS_INTERPRETATION_sRGB );
+				} else {
+					out = in.colourspace( VIPS_INTERPRETATION_sRGB );
+				}
+			} else {
+				out = in;
+			}
+
+			out.set( "xres", 3.779528 );
+			out.set( "yres", 3.779528 );
+			out.write_to_file( inputfilepath, VImage::option()->set( "strip", true ) );
+		} catch ( const VError& e ) {
+			throwRuntimeException( env, e.what() );
+		}
+
+		unlink( temporaryFileName );
+		free( temporaryFileName );
 	}
 
 	env->ReleaseStringUTFChars( jinputfilepath, inputfilepath );
+	env->ReleaseStringUTFChars( jcmykiccprofilepath, cmykiccprofilepath );
+	env->ReleaseStringUTFChars( jsrgbiccprofilepath, srgbiccprofilepath );
 }
 
 /*

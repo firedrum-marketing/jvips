@@ -86,8 +86,12 @@ public class Vips {
 	 *
 	 * @param inputFilePath
 	 *            the input filename
+	 * @param cmykIccProfilePath
+	 *            the filename of a CMYK ICC profile
+	 * @param srgbIccProfilePath
+	 *            the filename of an sRGB ICC profile
 	 */
-	public static native void convertImageToSRGBAndStrip(final String inputFilePath);
+	public static native void convertImageToSRGBAndStrip(final String inputFilePath, final String cmykIccProfilePath, final String srgbIccProfilePath);
 
 	/**
 	 * Retrieves an image file's dimensions.
