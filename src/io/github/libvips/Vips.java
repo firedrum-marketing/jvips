@@ -94,6 +94,14 @@ public class Vips {
 	public static native void convertImageToSRGBAndStrip(final String inputFilePath, final String cmykIccProfilePath, final String srgbIccProfilePath);
 
 	/**
+	 * Converts an SVG to PNG.
+	 *
+	 * @param svgData
+	 *            the SVG image
+	 */
+	public static native byte[] convertSVGtoPNG(final byte[] svgData);
+
+	/**
 	 * Retrieves an image file's dimensions.
 	 *
 	 * @param inputFilePath

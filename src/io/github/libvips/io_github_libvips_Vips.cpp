@@ -1,6 +1,9 @@
 #include "io_github_libvips_Vips.h"
 #include <cstdio>
 #include <cstdlib>
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 #include <vips/vips8>
 
 using vips::VError;
@@ -220,6 +223,39 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_io_github_libvips_Vips_resizeForCov
 
 /*
  * Class:     io_github_libvips_Vips
+ * Method:    convertSVGtoPNG()
+ * Signature: ([B)[B
+ */
+extern "C" JNIEXPORT jbyteArray JNICALL Java_io_github_libvips_Vips_convertSVGtoPNG(JNIEnv *env, jclass cls, jbyteArray jsvgdata) {
+	size_t size = 0;
+	void* buffer = NULL;
+
+	jbyte* svgdata =  env->GetByteArrayElements( jsvgdata, 0 );
+	const jsize svgdatalength = env->GetArrayLength( jsvgdata );
+
+	try {
+		VImage out = VImage::new_from_buffer( svgdata, svgdatalength, "" );
+		out.set( "xres", 3.779528 );
+		out.set( "yres", 3.779528 );
+		out.write_to_buffer( ".png", &buffer, &size, VImage::option()->set( "strip", true ) );
+	} catch ( const VError& e ) {
+		throwRuntimeException( env, e.what() );
+	}
+
+	env->ReleaseByteArrayElements( jsvgdata, svgdata, JNI_ABORT );
+
+	jbyteArray bytes = NULL;
+	if ( buffer != NULL ) {
+		bytes = env->NewByteArray( size );
+		env->SetByteArrayRegion( bytes, 0, size, (jbyte*) buffer );
+		g_free( buffer );
+	}
+
+	return bytes;
+}
+
+/*
+ * Class:     io_github_libvips_Vips
  * Method:    convertImageToSRGBAndStrip()
  * Signature: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
  */
@@ -235,7 +271,7 @@ extern "C" JNIEXPORT void JNICALL Java_io_github_libvips_Vips_convertImageToSRGB
 		size_t extensionLength = strlen( extension );
 		char* temporaryFileName = (char*) malloc( strlen( inputfilepath ) + extensionLength + 9 );
 		strcpy( temporaryFileName, inputfilepath );
-#ifdef _WIN32
+#ifndef HAVE_MKSTEMPS
 		strcat( temporaryFileName, ".XXXXXX" );
 		int tmpFile = mkstemp( temporaryFileName );
 #else
@@ -254,7 +290,7 @@ extern "C" JNIEXPORT void JNICALL Java_io_github_libvips_Vips_convertImageToSRGB
 		close( tmpFile );
 		fclose( sourceFile );
 
-#ifdef _WIN32
+#ifndef HAVE_MKSTEMPS
 		char* temporaryFileName2 = (char*) malloc( strlen( inputfilepath ) + extensionLength + 9 );
 		strcpy( temporaryFileName2, temporaryFileName );
 		strcat( temporaryFileName, "." );
