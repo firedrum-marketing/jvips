@@ -372,3 +372,41 @@ extern "C" JNIEXPORT jobject JNICALL Java_io_github_libvips_Vips_getDimension(JN
 
 	return dimension;
 }
+
+
+/*
+ * Class:     io_github_libvips_Vips
+ * Method:    getDimensionFromBytes
+ * Signature: ([B)Ljava/awt/Dimension;
+ */
+extern "C" JNIEXPORT jobject JNICALL Java_io_github_libvips_Vips_getDimensionFromBytes(JNIEnv *env, jclass vipsClass, jbyteArray jimagedata) {
+	jclass dimensionClass = env->FindClass( "java/awt/Dimension" );
+	if ( dimensionClass == NULL) {
+		throwRuntimeException( env, "Unable to locate class java.awt.Dimension" );
+		return NULL;
+	}
+
+	jmethodID consMethodID = env->GetMethodID( dimensionClass, "<init>", "(II)V" );
+	if ( consMethodID == NULL ) {
+		throwRuntimeException( env, "Unable to construct java.awt.Dimension");
+		return NULL;
+	}
+
+	jbyte* imagedata =  env->GetByteArrayElements( jimagedata, 0 );
+	const jsize imagedatalength = env->GetArrayLength( jimagedata );
+
+	jobject dimension = NULL;
+	try {
+		VImage in = VImage::new_from_buffer( imagedata, imagedatalength, "" );
+		dimension = env->NewObject( dimensionClass, consMethodID, in.width(), in.height() );
+		if ( dimension == NULL ) {
+			throwRuntimeException( env, "Unable to construct java.awt.Dimension" );
+		}
+	} catch ( const VError& e ) {
+		throwRuntimeException( env, e.what() );
+	}
+
+	env->ReleaseByteArrayElements( jimagedata, imagedata, JNI_ABORT );
+
+	return dimension;
+}

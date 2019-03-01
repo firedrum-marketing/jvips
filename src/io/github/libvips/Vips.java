@@ -108,4 +108,12 @@ public class Vips {
 	 *            the input filename
 	 */
 	public static native Dimension getDimension(final String inputFilePath);
+
+	/**
+	 * Retrieves an image's dimensions.
+	 *
+	 * @param imageData
+	 *            the image
+	 */
+	public static native Dimension getDimensionFromBytes(final byte[] imageData);
 }
